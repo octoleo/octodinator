@@ -1,0 +1,178 @@
+#!/bin/bash
+
+# Program name and metadata
+PROGRAM_NAME="Octodinator"
+PROGRAM_CODE="octodinator"
+PROGRAM_VERSION="1.0.0"
+PROGRAM_V="1.0"
+PROGRAM_URL="https://git.vdm.dev/octoleo/${PROGRAM_CODE}"
+
+# Ensure required tools are installed
+for cmd in jq mkdir rm find date curl; do
+	command -v "$cmd" >/dev/null 2>&1 || {
+		echo >&2 "[error] We require $cmd for $PROGRAM_NAME v${PROGRAM_VERSION} to work, but it's not installed. Aborting."
+		exit 1
+	}
+done
+
+(
+	# Default values
+	: "${LOCK_DIR:=/tmp/${PROGRAM_CODE}}"
+	INIT_COMMAND=""
+	CLEANUP_COMMAND=""
+	ACTION=""
+	PROGRAM_NAME_ID=""
+
+	# Quiet switch
+	QUIET=0
+
+	# === Utility Functions ===
+	function _echo() {
+		if (("$QUIET" == 0)); then
+			echo "$1"
+		fi
+	}
+
+	function count_files() {
+		find "$LOCK_DIR" -type f 2>/dev/null | wc -l
+	}
+
+	function start_program() {
+		local id="$1"
+		local file="$LOCK_DIR/${id}.lock"
+
+		mkdir -p "$LOCK_DIR"
+
+		if [[ $(count_files) -eq 0 ]]; then
+			_echo "[info] No active programs detected, running init command..."
+			if [[ -n "$INIT_COMMAND" ]]; then
+				eval "$INIT_COMMAND" || _echo "[warn] Init command failed!"
+			else
+				_echo "[warn] No init command defined!"
+			fi
+		fi
+
+		touch "$file"
+		_echo "[info] Started: $id (marker created)"
+	}
+
+	function stop_program() {
+		local id="$1"
+		local file="$LOCK_DIR/${id}.lock"
+
+		if [[ -f "$file" ]]; then
+			rm -f "$file"
+			_echo "[info] Stopped: $id (marker removed)"
+		else
+			_echo "[warn] No marker found for $id"
+		fi
+
+		if [[ $(count_files) -eq 0 ]]; then
+			_echo "[info] Last program finished, running cleanup command..."
+			if [[ -n "$CLEANUP_COMMAND" ]]; then
+				eval "$CLEANUP_COMMAND" || _echo "[warn] Cleanup command failed!"
+			else
+				_echo "[warn] No cleanup command defined!"
+			fi
+		fi
+	}
+
+	function load_config() {
+		if [[ -n "$CONFIG_FILE" && -f "$CONFIG_FILE" ]]; then
+			_echo "[info] Loading configuration from $CONFIG_FILE..."
+			LOCK_DIR=$(jq -r '.lock_dir // empty' "$CONFIG_FILE" || echo "$LOCK_DIR")
+			INIT_COMMAND=$(jq -r '.init_command // empty' "$CONFIG_FILE" || echo "")
+			CLEANUP_COMMAND=$(jq -r '.cleanup_command // empty' "$CONFIG_FILE" || echo "")
+		fi
+	}
+
+	function runUninstall() {
+		if [ -f "/usr/local/bin/${PROGRAM_CODE}" ]; then
+			sudo rm -f "/usr/local/bin/${PROGRAM_CODE}"
+			echo "[info] ${PROGRAM_NAME} v${PROGRAM_VERSION} has been completely uninstalled."
+		else
+			echo "[info] ${PROGRAM_NAME} v${PROGRAM_VERSION} is not installed."
+		fi
+		exit 0
+	}
+
+	function runUpdate() {
+		if [ -f "/usr/local/bin/${PROGRAM_CODE}" ]; then
+			sudo mv "/usr/local/bin/${PROGRAM_CODE}" "/usr/local/bin/${PROGRAM_CODE}.bak"
+		fi
+
+		if sudo curl --fail -L "${PROGRAM_URL}/raw/main/${PROGRAM_CODE}" -o "/usr/local/bin/${PROGRAM_CODE}" 2>/dev/null; then
+			echo "[success] Update was successful."
+			[ -f "/usr/local/bin/${PROGRAM_CODE}.bak" ] && sudo rm -f "/usr/local/bin/${PROGRAM_CODE}.bak"
+		else
+			echo >&2 "[error] Update failed! Restoring previous version."
+			if [ -f "/usr/local/bin/${PROGRAM_CODE}.bak" ]; then
+				sudo mv "/usr/local/bin/${PROGRAM_CODE}.bak" "/usr/local/bin/${PROGRAM_CODE}"
+			fi
+		fi
+
+		if [ -f "/usr/local/bin/${PROGRAM_CODE}" ]; then
+			sudo chmod +x "/usr/local/bin/${PROGRAM_CODE}"
+		fi
+		exit 0
+	}
+
+	function show_help() {
+		cat <<EOF
+Usage: ${PROGRAM_CODE} [options] start|stop <id>
+
+Options
+======================================================
+ -ld | --lock-dir=<path>   Directory where lock files are stored
+ -i  | --init=<command>    Command to run on first program start
+ -c  | --cleanup=<command> Command to run on last program stop
+ --conf=<path>             JSON config file with {lock_dir, init_command, cleanup_command}
+ -q  | --quiet             Suppress all output
+ --update                  Update this script to latest version
+ --uninstall               Uninstall this script
+ -h  | --help              Show this help menu
+======================================================
+        ${PROGRAM_NAME} v${PROGRAM_VERSION}
+======================================================
+EOF
+	}
+
+	# === Option Parsing ===
+	while :; do
+		case $1 in
+		-h | --help) show_help; exit 0 ;;
+		-q | --quiet) QUIET=1 ;;
+		--uninstall) runUninstall ;;
+		--update) runUpdate ;;
+		-ld=* | --lock-dir=*) LOCK_DIR="${1#*=}" ;;
+		-i=* | --init=*) INIT_COMMAND="${1#*=}" ;;
+		-c=* | --cleanup=*) CLEANUP_COMMAND="${1#*=}" ;;
+		--conf=*) CONFIG_FILE="${1#*=}" ;;
+		start|stop) ACTION="$1"; shift; PROGRAM_NAME_ID="$1" ;;
+		--) shift; break ;;
+		-?*) echo "[error] Unknown option: $1" >&2; exit 1 ;;
+		*) break ;;
+		esac
+		shift
+	done
+
+	# Load config file if available
+	load_config
+
+	# Validate input
+	if [[ -z "$ACTION" || -z "$PROGRAM_NAME_ID" ]]; then
+		echo >&2 "[error] You must specify 'start|stop <id>'"
+		show_help
+		exit 1
+	fi
+
+	# === Main Execution ===
+	case "$ACTION" in
+	start) start_program "$PROGRAM_NAME_ID" ;;
+	stop)  stop_program "$PROGRAM_NAME_ID" ;;
+	*) echo >&2 "[error] Unknown action: $ACTION"; exit 1 ;;
+	esac
+)
+
+exit 0
+
