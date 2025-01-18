@@ -16,7 +16,7 @@ Linted by [#ShellCheck](https://github.com/koalaman/shellcheck)
 ## Install
 
 ```shell
-$ sudo curl -L "https://git.vdm.dev/api/v1/repos/octoleo/octodinator/raw/main/octodinator" -o /usr/local/bin/octodinator
+$ sudo curl -L "https://raw.githubusercontent.com/octoleo/octodinator/refs/heads/master/src/octodinator" -o /usr/local/bin/octodinator
 $ sudo chmod +x /usr/local/bin/octodinator
 ```
 

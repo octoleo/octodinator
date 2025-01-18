@@ -3,9 +3,9 @@
 # Program name and metadata
 PROGRAM_NAME="Octodinator"
 PROGRAM_CODE="octodinator"
-PROGRAM_VERSION="1.0.0"
+PROGRAM_VERSION="1.0.1"
 PROGRAM_V="1.0"
-PROGRAM_URL="https://git.vdm.dev/octoleo/${PROGRAM_CODE}"
+# PROGRAM_URL="https://git.vdm.dev/octoleo/${PROGRAM_CODE}"
 
 # Ensure required tools are installed
 for cmd in jq mkdir rm find date curl; do
@@ -101,7 +101,7 @@ done
 			sudo mv "/usr/local/bin/${PROGRAM_CODE}" "/usr/local/bin/${PROGRAM_CODE}.bak"
 		fi
 
-		if sudo curl --fail -L "${PROGRAM_URL}/raw/main/${PROGRAM_CODE}" -o "/usr/local/bin/${PROGRAM_CODE}" 2>/dev/null; then
+		if sudo curl --fail -L "https://raw.githubusercontent.com/octoleo/${PROGRAM_CODE}/refs/heads/master/src/${PROGRAM_CODE}" 2>/dev/null; then
 			echo "[success] Update was successful."
 			[ -f "/usr/local/bin/${PROGRAM_CODE}.bak" ] && sudo rm -f "/usr/local/bin/${PROGRAM_CODE}.bak"
 		else
